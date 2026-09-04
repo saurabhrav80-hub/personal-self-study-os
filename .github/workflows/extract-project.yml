@@ -14,12 +14,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract correct project
+      - name: Find and extract project ZIP
         run: |
           rm -rf extracted
           mkdir extracted
 
-          unzip -q grok-workspace.zip -d extracted
+          echo "Files in repository:"
+          find . -maxdepth 2 -type f -print
+
+          ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" -print -quit)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No ZIP file found"
+            exit 1
+          fi
+
+          echo "Using ZIP: $ZIP_FILE"
+
+          unzip -q "$ZIP_FILE" -d extracted
 
           PROJECT_DIR=$(find extracted -type f -name package.json \
             -not -path '*/.vercel/*' \
@@ -27,7 +39,7 @@ jobs:
             -print | head -n 1 | xargs dirname)
 
           if [ -z "$PROJECT_DIR" ] || [ "$PROJECT_DIR" = "." ]; then
-            echo "Correct package.json not found"
+            echo "ERROR: Source package.json not found"
             exit 1
           fi
 
@@ -41,7 +53,7 @@ jobs:
           cp -a "$PROJECT_DIR"/. .
 
           rm -rf extracted
-          rm -f grok-workspace.zip
+          rm -f "$ZIP_FILE"
 
       - name: Commit project
         run: |
@@ -53,6 +65,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes"
           else
-            git commit -m "Fix project extraction"
+            git commit -m "Extract source project correctly"
             git push
           fi
