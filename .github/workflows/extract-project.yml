@@ -13,25 +13,30 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Find and extract project ZIP
+      - name: Restore ZIP from Git history
+        run: |
+          ZIP_COMMIT=$(git log --all --format=%H -- grok-workspace.zip | head -n 1)
+
+          if [ -z "$ZIP_COMMIT" ]; then
+            echo "ERROR: grok-workspace.zip was never committed"
+            exit 1
+          fi
+
+          echo "ZIP found in commit: $ZIP_COMMIT"
+
+          git checkout "$ZIP_COMMIT" -- grok-workspace.zip
+
+          ls -lh grok-workspace.zip
+
+      - name: Extract source project
         run: |
           rm -rf extracted
           mkdir extracted
 
-          echo "Files in repository:"
-          find . -maxdepth 2 -type f -print
-
-          ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" -print -quit)
-
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No ZIP file found"
-            exit 1
-          fi
-
-          echo "Using ZIP: $ZIP_FILE"
-
-          unzip -q "$ZIP_FILE" -d extracted
+          unzip -q grok-workspace.zip -d extracted
 
           PROJECT_DIR=$(find extracted -type f -name package.json \
             -not -path '*/.vercel/*' \
@@ -40,10 +45,11 @@ jobs:
 
           if [ -z "$PROJECT_DIR" ] || [ "$PROJECT_DIR" = "." ]; then
             echo "ERROR: Source package.json not found"
+            find extracted -maxdepth 3 -type f | head -100
             exit 1
           fi
 
-          echo "Using project: $PROJECT_DIR"
+          echo "SOURCE PROJECT: $PROJECT_DIR"
 
           find . -mindepth 1 -maxdepth 1 \
             ! -name .git \
@@ -53,9 +59,9 @@ jobs:
           cp -a "$PROJECT_DIR"/. .
 
           rm -rf extracted
-          rm -f "$ZIP_FILE"
+          rm -f grok-workspace.zip
 
-      - name: Commit project
+      - name: Commit source project
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -65,6 +71,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes"
           else
-            git commit -m "Extract source project correctly"
+            git commit -m "Restore complete source project"
             git push
           fi
